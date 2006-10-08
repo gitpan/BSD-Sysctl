@@ -12,7 +12,7 @@ use XSLoader;
 
 use vars qw($VERSION @ISA %MIB_CACHE %MIB_SKIP @EXPORT_OK);
 
-$VERSION = '0.03';
+$VERSION = '0.04';
 @ISA     = qw(Exporter);
 
 use constant FMT_A           =>  1;
@@ -90,8 +90,8 @@ BSD::Sysctl - Fetch sysctl values from BSD-like systems
 
 =head1 VERSION
 
-This document describes version 0.03 of BSD::Sysctl, released
-2006-08-31.
+This document describes version 0.04 of BSD::Sysctl, released
+2006-10-08.
 
 =head1 SYNOPSIS
 
@@ -238,7 +238,29 @@ No distinction between ordinary and opaque variables is made on
 FreeBSD. If you ask for a variable, you get it (for instance,
 C<kern.geom.confxml>). This is good.
 
+When setting a variable to an integer value, the value is passed
+to the C routine as is, which calls C<strtol> (or C<strtoul>) to
+perform the conversion. The C routine checks to see whether the
+conversion succeeds.
+
+The alternative would have been to let Perl handle the conversion.
+The problem with this is that Perl tries to do the right thing and
+returns 0 in the event of an invalid conversion, and setting many
+C<sysctl> variables to 0 could bring down a system (for instance,
+maximum number of open files per process). This design makes the
+module handle bad data more gracefully.
+
 =head1 DIAGNOSTICS
+
+  "invalid integer: '...'"
+
+A variable was set via C<sysctl_set>, and the variable required an
+integer value, however, the program was not able to convert the
+input into anything that resembled an integer. Solution: check your
+input.
+
+Similar warnings occur with unigned ints, longs and unsigned longs.
+In all cases, the variable retains its initial value.
 
   "uncached mib: [sysctl name]"
 
@@ -284,6 +306,17 @@ L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=BSD-Sysctl|rt.cpan.org>.
 A short snippet demonstrating the problem, along with the expected
 and actual output, and the version of BSD::Sysctl used, will be
 appreciated.
+
+=head1 SEE ALSO
+
+L<BSD::Resource> - process resource limit and priority functions.
+
+L<IO::KQueue> - monitor changes on sockets, files, processes and signals.
+
+=head1 ACKNOWLEDGEMENTS
+
+Douglas Steinwand added support for the amd64 platform in release
+0.04.
 
 =head1 AUTHOR
 
