@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                BSD-Sysctl
-version:             0.05
+version:             0.06
 abstract:            Manipulate kernel sysctl variables on BSD-like systems
 license:             perl
 generated_by:        ExtUtils::MakeMaker version 6.30_04

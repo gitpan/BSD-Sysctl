@@ -12,7 +12,7 @@ use XSLoader;
 
 use vars qw($VERSION @ISA %MIB_CACHE %MIB_SKIP @EXPORT_OK);
 
-$VERSION = '0.05';
+$VERSION = '0.06';
 @ISA     = qw(Exporter);
 
 use constant FMT_A           =>  1;
@@ -90,8 +90,8 @@ BSD::Sysctl - Manipulate kernel sysctl variables on BSD-like systems
 
 =head1 VERSION
 
-This document describes version 0.05 of BSD::Sysctl, released
-2006-10-09.
+This document describes version 0.06 of BSD::Sysctl, released
+2006-10-10.
 
 =head1 SYNOPSIS
 
@@ -306,6 +306,10 @@ L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=BSD-Sysctl|rt.cpan.org>.
 A short snippet demonstrating the problem, along with the expected
 and actual output, and the version of BSD::Sysctl used, will be
 appreciated.
+
+I try to keep an eye on L<http://portsmon.freebsd.org/portoverview.py?category=sysutils&portname=p5-BSD-Sysctl> to see what problems are logged via the FreeBSD ports
+system, but using the CPAN RT bug tracking system is your best
+bet.
 
 =head1 SEE ALSO
 
