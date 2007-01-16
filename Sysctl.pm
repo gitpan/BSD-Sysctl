@@ -1,6 +1,6 @@
 # BSD::Sysctl.pm - Access BSD sysctl(8) information directly
 #
-# Copyright (C) 2006 David Landgren, all rights reserved.
+# Copyright (C) 2006-2007 David Landgren, all rights reserved.
 
 package BSD::Sysctl;
 
@@ -12,7 +12,7 @@ use XSLoader;
 
 use vars qw($VERSION @ISA %MIB_CACHE %MIB_SKIP @EXPORT_OK);
 
-$VERSION = '0.07';
+$VERSION = '0.08';
 @ISA     = qw(Exporter);
 
 use constant FMT_A           =>  1;
@@ -82,6 +82,31 @@ sub set {
     return _mib_set($$self, @_);
 }
 
+sub iterator {
+    my $class = shift;
+    my $name  = shift;
+    my $self;
+    $self->{head} = $name || undef;
+    return bless $self, $class;
+}
+
+sub name {
+    my $self = shift;
+    return $self->{_name};
+}
+
+sub value {
+    my $self = shift;
+    return undef unless exists $self->{_name};
+    return sysctl($self->{_name});
+}
+
+sub reset {
+    my $self = shift;
+    delete $self->{_ctx};
+    return $self;
+}
+
 XSLoader::load 'BSD::Sysctl', $VERSION;
 
 =head1 NAME
@@ -90,8 +115,8 @@ BSD::Sysctl - Manipulate kernel sysctl variables on BSD-like systems
 
 =head1 VERSION
 
-This document describes version 0.07 of BSD::Sysctl, released
-2006-10-22.
+This document describes version 0.08 of BSD::Sysctl, released
+2007-01-16.
 
 =head1 SYNOPSIS
 
@@ -220,6 +245,47 @@ C<undef> on failure.
 
   $variable->set(99);
 
+=item iterator
+
+Creates an iterator that may be used to walk through the sysctl
+variable tree. If no parameter is given, the iterator defaults
+to the first entry of the tree. Otherwise, if a paramter is
+given, it is decoded as a sysctl variable. If the decoding
+fails, undef is returned.
+
+  my $k = BSD::Sysctl->iterator( 'kern' );
+  while ($k->next) {
+    print $k->name, '=', $k->value, "\n";
+  }
+
+=item next
+
+Moves the iterator to the next sysctl variable and loads the
+variable's name and its current value.
+
+=item name
+
+Returns the name of the sysctl variable that the iterator
+is currently pointing at. If the iterator has not started to
+look at the tree (that is, C<next> has not yet been called),
+undef is returned.
+
+=item value
+
+Returns the value of the sysctl variable that the iterator
+is currently pointing at. If the iterator has not started to
+look at the tree, undef is returned. Subsequent calls to
+value() will perform a fresh fetch on the current sysctl
+variable that the iterator is pointing at.
+
+Some return values are references to hashes or arrays.
+
+=item reset
+
+The iterator is reset back to before the first sysctl variable
+it initially began with (in other words, C<next> must be
+called afterwards, in order to fetch the first variable.
+
 =back
 
 =head1 NOTES
@@ -293,12 +359,18 @@ for more information.
 
 =head1 BUGS
 
-This is my first XS module. I may be doing wild and dangerous things
-and not realise it. Gentle nudges in the right direction will be
-gratefully received.
+Some branches are not iterated on FreeBSD 4 (and perl 5.6.1). Most
+notably, the C<vm.stats> branch. I am not sure of the reason, but
+it's a failure in a C<sysctl> system call, so it could be related
+to that release. As FreeBSD 4.x will reach the end of its supported
+life in 2007, I'm not particularly fussed.
 
 Some sysctl values are 64-bit quantities. I am not all sure that
 these are handled correctly.
+
+This is my first XS module. I may be doing wild and dangerous things
+and not realise it. Gentle nudges in the right direction will be
+gratefully received.
 
 Please report all bugs at
 L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=BSD-Sysctl|rt.cpan.org>.
@@ -326,11 +398,11 @@ Douglas Steinwand added support for the amd64 platform in release
 
 David Landgren.
 
-Copyright (C) 2006, all rights reserved.
+Copyright (C) 2006-2007, all rights reserved.
 
 =head1 LICENSE
 
-This library is free software; you can redistribute it and/or modify
+This library is free software; you may redistribute it and/or modify
 it under the same terms as Perl itself.
 
 =cut

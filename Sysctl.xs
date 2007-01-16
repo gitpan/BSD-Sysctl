@@ -1,3 +1,8 @@
+/* Sysctl.xs -- XS component of BSD-Sysctl
+ *
+ * Copyright (C) 2006-2007 David Landgren
+ */
+
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
@@ -41,9 +46,148 @@
 #include <netinet6/raw_ip6.h>
 #include "bsd-sysctl.h"
 
+int
+_init_iterator(HV *self, int *mib, int *miblenp, int valid) {
+    SV **headp;
+    int qoid[CTL_MAXNAME];
+    u_int qoidlen;
+    SV *clen;
+    SV **clenp;
+    int cmplen;
+    int j;
+
+    qoid[0] = 0;
+    qoid[1] = 2;
+    if (valid) {
+        memcpy(qoid+2, mib, (*miblenp) * sizeof(int));
+        qoidlen = *miblenp + 2;
+        *miblenp = (CTL_MAXNAME+2) * sizeof(int);
+        clenp = hv_fetch(self, "_len", 4, 0);
+        cmplen = SvIV(*clenp);
+    }
+    else {
+        headp = hv_fetch(self, "head", 4, 0);
+        if (!(headp && *headp)) {
+            croak( "failed to get some head in _init_iterator()\n" );
+        }
+        if (SvPOK(*headp)) {
+            /* begin where asked */
+            qoidlen = sizeof(qoid);
+            if (sysctlnametomib( SvPV_nolen(*headp), qoid+2, &qoidlen) == -1) {
+                warn( "_init_iterator(%s): sysctlnametomib lookup failed\n",
+                    SvPV_nolen(*headp)
+                );
+                return 0;
+            }
+            cmplen = qoidlen;
+            qoidlen += 2;
+        }
+        else {
+            /* begin at the beginning */
+            qoid[2] = 1;
+            cmplen  = 0;
+            qoidlen = 3;
+        }
+        clen = newSViv(cmplen);
+        SvREFCNT_inc(clen);
+        hv_store(self, "_len", 4, clen, 0);
+    }
+
+    /*
+    printf( "next: " );
+    for (j = 0; j < qoidlen; ++j) {
+        if (j) printf("."); printf("%d", qoid[j]);
+    }
+    printf("\n");
+    */
+
+    /* load the mib */
+    if (sysctl(qoid, qoidlen, mib, miblenp, 0, 0) == -1) {
+        return 0;
+    }
+    *miblenp /= sizeof(int);
+    if (*miblenp < cmplen) {
+        return 0 ;
+    }
+
+    for (j = 0; j < cmplen; ++j) {
+        if (mib[j] != qoid[j+2]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 MODULE = BSD::Sysctl   PACKAGE = BSD::Sysctl
 
 PROTOTYPES: ENABLE
+
+SV *
+next (SV *refself)
+    INIT:
+        int mib[CTL_MAXNAME+2];
+        size_t miblen;
+        int qoid[CTL_MAXNAME+2];
+        size_t qoidlen;
+        char name[BUFSIZ];
+        size_t namelen;
+        HV *self;
+        SV **ctxp;
+        SV *ctx;
+        SV *cname;
+        int j;
+        int *p;
+
+    CODE:
+        self = (HV *)SvRV(refself);
+        if (ctxp = hv_fetch(self, "_ctx", 4, 0)) {
+            p = (int *)SvPVX(*ctxp);
+            miblen = *p++;
+            memcpy(mib, p, miblen * sizeof(int));
+
+            if (!_init_iterator(self, mib, &miblen, 1)) {
+                XSRETURN_UNDEF;
+            }
+        }
+        else {
+            miblen = sizeof(mib)/sizeof(mib[0]);
+            if (!_init_iterator(self, mib, &miblen, 0)) {
+                XSRETURN_UNDEF;
+            }
+        }
+
+        qoid[0] = 0;
+        qoid[1] = 1;
+        memcpy(qoid+2, mib, miblen * sizeof(int));
+        qoidlen = miblen + 2;
+
+        bzero(name, BUFSIZ);
+        namelen = sizeof(name);
+        j = sysctl(qoid, qoidlen, name, &namelen, 0, 0);
+        if (j || !namelen) {
+            warn("next(): sysctl name failure %d %d %d", j, namelen, errno);
+            XSRETURN_UNDEF;
+        }
+        cname = newSVpvn(name, namelen-1);
+        SvREFCNT_inc(cname);
+        hv_store(self, "_name", 5, cname, 0);
+        RETVAL = cname;
+
+        /* reuse qoid to build context store
+         *  - the length of the mib
+         *  - followed by the mib values
+         * and copy to an SV to save in the self hash
+         */
+        p = qoid;
+        memcpy(p++, (const void *)&miblen, sizeof(int));
+        memcpy(p, (const void *)mib, miblen * sizeof(int));
+
+        ctx = newSVpvn((const char *)qoid, (miblen+1) * sizeof(int));
+        SvREFCNT_inc(ctx);
+        hv_store(self, "_ctx", 4, ctx, 0);
+
+    OUTPUT:
+        RETVAL
 
 int
 _mib_exists(const char *arg)
@@ -82,7 +226,6 @@ _mib_info(const char *arg)
         mib[0] = 0;
         mib[1] = 4;
         if (sysctl(mib, nr_octets+2, fmt, &len, NULL, 0) == -1) {
-            warn( "oog\n" );
             XSRETURN_UNDEF;
         }
 
@@ -229,7 +372,6 @@ _mib_lookup(const char *arg)
         /* warn("sysctl fmt=%d len=%d buflen=%d\n", oid_fmt, oid_len, buflen); */
         memcpy(mib, oid_data, oid_len * sizeof(int));
         if (sysctl(mib, oid_len, buf, &buflen, NULL, 0) == -1) {
-            warn("get sysctl %s failed\n", arg);
             XSRETURN_UNDEF;
         }
         /* warn(" now buflen=%d\n", buflen); */
@@ -364,10 +506,17 @@ _mib_lookup(const char *arg)
             hv_store(c, "mbuflen",        7, newSVuv(inf->m_mlen), 0);
             hv_store(c, "mbufhead",       8, newSVuv(inf->m_mhlen), 0);
             hv_store(c, "drain",          5, newSVuv(inf->m_drain), 0);
-#if __FreeBSD_version >= 500000
+#if __FreeBSD_version < 500000
+            hv_store(c, "numtypes",       8, newSVpvn("", 0), 0);
+#else
             hv_store(c, "numtypes",       8, newSViv(inf->m_numtypes), 0);
 #endif
-#if __FreeBSD_version >= 600000
+#if __FreeBSD_version < 600000
+            hv_store(c, "mbufs",          5, newSVpvn("", 0), 0);
+            hv_store(c, "mclusts",        7, newSVpvn("", 0), 0);
+            hv_store(c, "sfallocwait",   11, newSVpvn("", 0), 0);
+            hv_store(c, "sfiocnt",        7, newSVpvn("", 0), 0);
+#else
             hv_store(c, "mbufs",          5, newSVuv(inf->m_mbufs), 0);
             hv_store(c, "mclusts",        7, newSVuv(inf->m_mclusts), 0);
             hv_store(c, "sfallocwait",   11, newSVuv(inf->sf_allocwait), 0);
@@ -393,7 +542,14 @@ _mib_lookup(const char *arg)
             RETVAL = newRV((SV *)c);
             hv_store(c, "devno",           5, newSViv(inf->device_number), 0);
             hv_store(c, "unitno",          6, newSViv(inf->unit_number), 0);
-#if __FreeBSD_version >= 500000
+#if __FreeBSD_version < 500000
+            hv_store(c, "sequence",        8, newSVpvn("", 0), 0);
+            hv_store(c, "allocated",       9, newSVpvn("", 0), 0);
+            hv_store(c, "startcount",     10, newSVpvn("", 0), 0);
+            hv_store(c, "endcount",        8, newSVpvn("", 0), 0);
+            hv_store(c, "busyfromsec",    11, newSVpvn("", 0), 0);
+            hv_store(c, "busyfromfrac",   12, newSVpvn("", 0), 0);
+#else
             hv_store(c, "sequence",        8, newSVuv(inf->sequence0), 0);
             hv_store(c, "allocated",       9, newSViv(inf->allocated), 0);
             hv_store(c, "startcount",     10, newSViv(inf->start_count), 0);
@@ -527,13 +683,26 @@ _mib_lookup(const char *arg)
             hv_store(c, "zonefail",          8, newSVuv(inf->tcps_sc_zonefail), 0);
             hv_store(c, "sendcookie",       10, newSVuv(inf->tcps_sc_sendcookie), 0);
             hv_store(c, "recvcookie",       10, newSVuv(inf->tcps_sc_recvcookie), 0);
-#if __FreeBSD_version >= 500000
+#if __FreeBSD_version < 500000
+            hv_store(c, "minmssdrops",      11, newSVpvn("", 0), 0);
+            hv_store(c, "sendrexmitbad",    13, newSVpvn("", 0), 0);
+            hv_store(c, "hostcacheadd",     12, newSVpvn("", 0), 0);
+            hv_store(c, "hostcacheover",    13, newSVpvn("", 0), 0);
+#else
             hv_store(c, "minmssdrops",      11, newSVuv(inf->tcps_minmssdrops), 0);
             hv_store(c, "sendrexmitbad",    13, newSVuv(inf->tcps_sndrexmitbad), 0);
             hv_store(c, "hostcacheadd",     12, newSVuv(inf->tcps_hc_added), 0);
             hv_store(c, "hostcacheover",    13, newSVuv(inf->tcps_hc_bucketoverflow), 0);
 #endif
-#if __FreeBSD_version >= 600000
+#if __FreeBSD_version < 600000
+            hv_store(c, "badrst",            6, newSVpvn("", 0), 0);
+            hv_store(c, "sackrecover",      11, newSVpvn("", 0), 0);
+            hv_store(c, "sackrexmitsegs",   14, newSVpvn("", 0), 0);
+            hv_store(c, "sackrexmitbytes",  15, newSVpvn("", 0), 0);
+            hv_store(c, "sackrecv",          8, newSVpvn("", 0), 0);
+            hv_store(c, "sacksend",          8, newSVpvn("", 0), 0);
+            hv_store(c, "sackscorebover",   14, newSVpvn("", 0), 0);
+#else
             hv_store(c, "badrst",            6, newSVuv(inf->tcps_badrst), 0);
             hv_store(c, "sackrecover",      11, newSVuv(inf->tcps_sack_recovery_episode), 0);
             hv_store(c, "sackrexmitsegs",   14, newSVuv(inf->tcps_sack_rexmits), 0);
@@ -592,7 +761,14 @@ _mib_lookup(const char *arg)
             /* don't know if any IA64 fields are useful,
              * (as per /usr/src/sys/ia64/include/bootinfo.h)
              */
-#ifndef __ia64
+#ifdef __ia64
+            hv_store(c, "biosused",       8, newSVpvn("", 0), 0);
+            hv_store(c, "size",           4, newSVpvn("", 0), 0);
+            hv_store(c, "msizevalid",    10, newSVpvn("", 0), 0);
+            hv_store(c, "biosdev",        7, newSVpvn("", 0), 0);
+            hv_store(c, "basemem",        7, newSVpvn("", 0), 0);
+            hv_store(c, "extmem",         6, newSVpvn("", 0), 0);
+#else
             hv_store(c, "biosused",       8, newSVuv(inf->bi_n_bios_used), 0);
             hv_store(c, "size",           4, newSVuv(inf->bi_size), 0);
             hv_store(c, "msizevalid",    10, newSVuv(inf->bi_memsizes_valid), 0);
