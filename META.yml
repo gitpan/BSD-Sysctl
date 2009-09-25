@@ -1,14 +1,22 @@
 --- #YAML:1.0
-name:                BSD-Sysctl
-version:             0.09
-abstract:            Manipulate kernel sysctl variables on BSD-like systems
-license:             perl
-author:              
+name:               BSD-Sysctl
+version:            0.10
+abstract:           Manipulate kernel sysctl variables on BSD-like systems
+author:
     - David Landgren
-generated_by:        ExtUtils::MakeMaker version 6.44
-distribution_type:   module
-requires:     
-    XSLoader:                      0
+license:            perl
+distribution_type:  module
+configure_requires:
+    ExtUtils::MakeMaker:  0
+build_requires:
+    ExtUtils::MakeMaker:  0
+requires:
+    XSLoader:  0
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.54
 meta-spec:
-    url:     http://module-build.sourceforge.net/META-spec-v1.3.html
-    version: 1.3
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4

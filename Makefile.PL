@@ -84,8 +84,8 @@ __DATA__
 # List of constant definitions.
 #
 # This produces
-#  -- mibfmt.h (#defines for Sysctl.xs)
-#  -- mibfmt.pl (use constants for Sysctl.pm)
+#  -- bsd-sysctl.h (#defines for Sysctl.xs)
+#  -- bsd-sysctl.pl (use constants for Sysctl.pm)
 #
 # auto string definitions are derived from the first
 # field, for instance, S,bootinfo => FMT_BOOTINFO
@@ -117,3 +117,5 @@ S,vmtotal	22	auto
 S,xinpcb	23	auto
 S,xvfsconf	24	auto
 T,struct_cdev	25	auto
+Q	26	FMT_64
+QU	27	FMT_U64
